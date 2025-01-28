@@ -169,3 +169,15 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# OS
+.DS_Store
+
+# written by setuptools_scm
+**/_version.py
+
+# vim swap files
+**.swp
+
+# virtual environment for development
+venv_ome2glancer
