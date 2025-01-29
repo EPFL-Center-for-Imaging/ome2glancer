@@ -1,4 +1,8 @@
 import json
+import multiprocessing
+import pathlib
+import time
+import webbrowser
 
 import neuroglancer
 import ome_zarr.io
@@ -6,6 +10,8 @@ import ome_zarr.reader
 import typer
 import validators
 from typing_extensions import Annotated
+
+import ome2glancer.serve
 
 si_prefixes = {
     "quetta": "Q",
@@ -85,23 +91,41 @@ def make_layer(url, metadata, channel=None):
 def link_gen(
     file: Annotated[str, typer.Argument(help="The file to open, can be a URL or a local path")] = "",
     instance: Annotated[str, typer.Option(help="")] = "http://neuroglancer-demo.appspot.com",
+    port: Annotated[int, typer.Option(help="The port used to server local files via http.")] = 8000,
+    open_in_browser: Annotated[
+        bool, typer.Option(help="Where to open the link in the default webbrowser or not.")
+    ] = True,
 ):
+    if not validators.url(file):
+        path = pathlib.Path(file)
+        if not path.exists():
+            raise ValueError(f"{path} doesn't exist.")
+        else:
+            server_process = multiprocessing.Process(target=ome2glancer.serve.serve, args=(path, port))
+            server_process.start()
+            url = f"http://localhost:{port}"
+    elif validators.url(file):
+        url = file
+        server_process = None
+    else:
+        raise ValueError(f"{file} is not a valid path nor a valid URL.")
+
     if not validators.url(instance):
-        raise ValueError
+        raise ValueError("The neuroglancer instance you provided is not a valid url.")
 
     managed_layers = []
     shapes = []
 
-    reader = ome_zarr.reader.Reader(ome_zarr.io.parse_url(file))
+    reader = ome_zarr.reader.Reader(ome_zarr.io.parse_url(url))
     for node in reader():
         shapes.append(node.data[0].shape)
         metadata = node.metadata
         axis_types = [axis["type"] for axis in metadata["axes"]]
         if "channel" in axis_types:
             for c in range(len(metadata["channel_names"])):
-                managed_layers.append(make_layer(file, metadata, channel=c))
+                managed_layers.append(make_layer(url, metadata, channel=c))
         else:
-            managed_layers.append(make_layer(file, metadata))
+            managed_layers.append(make_layer(url, metadata))
 
     axis_names = [axis["name"] for axis in metadata["axes"]]
     axis_units = [convert_units(axis["unit"]) for axis in metadata["axes"] if axis["type"] != "channel"]
@@ -132,4 +156,19 @@ def link_gen(
     for managed_layer in managed_layers:
         state.layers.append(managed_layer)
 
-    print(instance + "/#!" + json.dumps(state.to_json(), separators=(",", ":")))
+    link = instance + "/#!" + json.dumps(state.to_json(), separators=(",", ":"))
+
+    print(link)
+
+    if open_in_browser:
+        webbrowser.open_new(link)
+
+    if server_process is not None:
+        try:
+            print(f"\n{file} is being server on port {port}.")
+            print("\nWARNING: This exposes your data to any machine that can access the webserver.")
+            print("\nPress ctrl + c when you are done to stop the server.")
+            while True:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            server_process.join()

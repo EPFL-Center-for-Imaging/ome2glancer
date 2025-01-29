@@ -105,4 +105,4 @@ all = [
 Repository = "https://github.com/EPFL-Center-for-Imaging/ome2glancer"
 
 [project.scripts]
-link_gen = "ome2glancer.cli:app"
+ome2glancer = "ome2glancer.cli:app"
