@@ -60,11 +60,30 @@ def convert_units(unit):
         raise ValueError(f"Unkown unit {unit}")
 
 
-def make_layer(url, metadata, channel=None):
+def make_managed_layer(layer, name, visible):
+    managed_layer = neuroglancer.ManagedLayer(name=name, layer=layer)
+    managed_layer.visible = True
+    return managed_layer
+
+
+def make_seg_layer(node):
+    url = node.zarr.path
     source = neuroglancer.LayerDataSource(url=url)
     layer_kwargs = {"source": source}
+    layer = neuroglancer.SegmentationLayer(**layer_kwargs)
+    name = url.rstrip("/").rsplit("/", 1)[-1]
+    return make_managed_layer(layer, name, node.visible)
+
+
+def make_img_layer(node, channel=None):
+    url = node.zarr.path
+    metadata = node.metadata
+    source = neuroglancer.LayerDataSource(url=url)
+    layer_kwargs = {"source": source}
+
     if channel is not None:
         layer_kwargs["local_position"] = [channel]
+
     if "contrast_limits" in metadata:
         if channel is not None:
             contrast_limits = metadata["contrast_limits"][channel]
@@ -72,6 +91,7 @@ def make_layer(url, metadata, channel=None):
             contrast_limits = metadata["contrast_limits"][0]
         invlerp_params = neuroglancer.InvlerpParameters(range=contrast_limits)
         layer_kwargs["shader_controls"] = {"normalized": invlerp_params.to_json()}
+
     if "colormap" in metadata:
         colormap = metadata["colormap"][channel] if channel is not None else metadata["colormap"][0]
         glsl_colormap = f"vec3 colormap(float x){{\n\tvec3 result;\n\tresult.r = x * {float(colormap[1][0] - colormap[0][0])} + {float(colormap[0][0])};\n\tresult.g = x * {float(colormap[1][1] - colormap[0][1])} + {float(colormap[0][1])};\n\tresult.b = x * {float(colormap[1][2] - colormap[0][2])} + {float(colormap[0][2])};\n\treturn clamp(result, 0.0, 1.0);\n}}\n"
@@ -81,11 +101,10 @@ def make_layer(url, metadata, channel=None):
             + "void main () {\n\temitRGB(colormap(normalized(getDataValue())));\n}"
         )
         layer_kwargs["shader"] = shader
+
     layer = neuroglancer.ImageLayer(**layer_kwargs)
     name = url.rstrip("/").rsplit("/", 1)[-1]
-    managed_layer = neuroglancer.ManagedLayer(name=name, layer=layer)
-    managed_layer.visible = True
-    return managed_layer
+    return make_managed_layer(layer, name, node.visible)
 
 
 def link_gen(
@@ -114,27 +133,45 @@ def link_gen(
         raise ValueError("The neuroglancer instance you provided is not a valid url.")
 
     managed_layers = []
-    shapes = []
 
     reader = ome_zarr.reader.Reader(ome_zarr.io.parse_url(url))
-    for node in reader():
-        shapes.append(node.data[0].shape)
-        metadata = node.metadata
-        axis_types = [axis["type"] for axis in metadata["axes"]]
-        if "channel" in axis_types:
-            for c in range(len(metadata["channel_names"])):
-                managed_layers.append(make_layer(url, metadata, channel=c))
-        else:
-            managed_layers.append(make_layer(url, metadata))
+    nodes = list(reader())
+    for node in nodes:
+        data = node.data
+        if data is None:
+            # Skip nodes that have no data
+            continue
 
+        if node.load(ome_zarr.reader.Label):
+            managed_layers.append(make_seg_layer(node))
+            break
+        else:
+            continue
+            axis_types = [axis["type"] for axis in node.metadata["axes"]]
+            if "channel" in axis_types:
+                for c in range(len(node.metadata["channel_names"])):
+                    managed_layers.append(make_img_layer(node, channel=c))
+            else:
+                managed_layers.append(make_img_layer(node))
+
+    metadata = nodes[0].metadata
+    axis_types = [axis["type"] for axis in metadata["axes"]]
+    channel_axis = axis_types.index("channel") if "channel" in axis_types else None
     axis_names = [axis["name"] for axis in metadata["axes"]]
-    axis_units = [convert_units(axis["unit"]) for axis in metadata["axes"] if axis["type"] != "channel"]
+    axis_units = []
+    for axis in metadata["axes"]:
+        if "unit" in axis:
+            axis_units.append(axis["unit"])
+        elif axis["type"] == "space":
+            axis_units.append("um")
+        elif axis["type"] == "time":
+            axis_units.append("s")
     axis_scales = metadata["coordinateTransformations"][0][0]["scale"]
 
     # Remove the channel axis
-    channel_axis = axis_names.index("c")
-    axis_scales.pop(channel_axis)
-    axis_names.pop(channel_axis)
+    if channel_axis is not None:
+        axis_scales.pop(channel_axis)
+        axis_names.pop(channel_axis)
 
     dimensions = neuroglancer.CoordinateSpace(
         names=axis_names,
@@ -148,7 +185,7 @@ def link_gen(
         layout="4panel",
         crossSectionScale=4,
         projection_orientation=(-0.3, 0.2, 0, -0.9),
-        projectionScale=max(shapes[0][-3:]) * 2,
+        projectionScale=max(nodes[0].data[0].shape[-3:]) * 2,
         selectedLayer=selected_layer.to_json(),
         displayDimensions=["z", "y", "x"],
     )
