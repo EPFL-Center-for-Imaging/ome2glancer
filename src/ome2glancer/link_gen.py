@@ -144,9 +144,7 @@ def link_gen(
 
         if node.load(ome_zarr.reader.Label):
             managed_layers.append(make_seg_layer(node))
-            break
         else:
-            continue
             axis_types = [axis["type"] for axis in node.metadata["axes"]]
             if "channel" in axis_types:
                 for c in range(len(node.metadata["channel_names"])):
