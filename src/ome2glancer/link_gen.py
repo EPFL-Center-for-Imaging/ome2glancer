@@ -161,7 +161,7 @@ def link_gen(
     axis_units = []
     for axis in metadata["axes"]:
         if "unit" in axis:
-            axis_units.append(axis["unit"])
+            axis_units.append(convert_units(axis["unit"]))
         elif axis["type"] == "space":
             axis_units.append("um")
         elif axis["type"] == "time":
