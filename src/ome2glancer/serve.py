@@ -17,7 +17,7 @@ def serve(path, port=8000, silent=True):
         if silent:
             sys.stdout = f
             sys.stderr = f
-        server = http.server.HTTPServer(("localhost", 8000), CORSRequestHandler)
+        server = http.server.HTTPServer(("localhost", port), CORSRequestHandler)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
