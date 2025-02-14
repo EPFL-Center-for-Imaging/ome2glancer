@@ -109,7 +109,10 @@ def make_img_layer(node, channel=None):
 
 def link_gen(
     file: Annotated[str, typer.Argument(help="The file to open, can be a URL or a local path")] = "",
-    instance: Annotated[str, typer.Option(help="")] = "http://neuroglancer-demo.appspot.com",
+    instance: Annotated[
+        str, typer.Option(help="The neuroglancer instance to use.")
+    ] = "http://neuroglancer-demo.appspot.com",
+    ip: Annotated[str, typer.Option(help="The IP of the local machine.")] = ome2glancer.serve.get_local_ip(),
     port: Annotated[int, typer.Option(help="The port used to server local files via http.")] = 8000,
     open_in_browser: Annotated[
         bool, typer.Option(help="Where to open the link in the default webbrowser or not.")
@@ -120,9 +123,9 @@ def link_gen(
         if not path.exists():
             raise ValueError(f"{path} doesn't exist.")
         else:
-            server_process = multiprocessing.Process(target=ome2glancer.serve.serve, args=(path, port))
+            server_process = multiprocessing.Process(target=ome2glancer.serve.serve, args=(path, ip, port))
             server_process.start()
-            url = f"http://localhost:{port}"
+            url = f"http://{ip}:{port}"
     elif validators.url(file):
         url = file
         server_process = None
@@ -138,7 +141,7 @@ def link_gen(
     nodes = list(reader())
     for node in nodes:
         data = node.data
-        if data is None:
+        if data is None or len(data) == 0:
             # Skip nodes that have no data
             continue
 
