@@ -114,9 +114,7 @@ def link_gen(
     ] = "http://neuroglancer-demo.appspot.com",
     ip: Annotated[str, typer.Option(help="The IP of the local machine.")] = ome2glancer.serve.get_local_ip(),
     port: Annotated[int, typer.Option(help="The port used to server local files via http.")] = 8000,
-    open_in_browser: Annotated[
-        bool, typer.Option(help="Where to open the link in the default webbrowser or not.")
-    ] = True,
+    open_in_browser: Annotated[bool, typer.Option(help="Open the link in the default webbrowser.")] = True,
 ):
     if not validators.url(file):
         path = pathlib.Path(file)

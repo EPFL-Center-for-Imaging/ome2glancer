@@ -2,6 +2,10 @@ import http.server
 import os
 import socket
 import sys
+import webbrowser
+
+import typer
+from typing_extensions import Annotated
 
 
 def get_local_ip():
@@ -23,13 +27,26 @@ class CORSRequestHandler(http.server.SimpleHTTPRequestHandler):
         return super().end_headers()
 
 
-def serve(path, ip="localhost", port=8000, silent=True):
+def serve(
+    path: Annotated[
+        str,
+        typer.Argument(help="Path to the folder that should be server. Can be a .ome.zarr file"),
+    ],
+    ip: Annotated[str, typer.Option(help="Address of the server.")] = "localhost",
+    port: Annotated[int, typer.Option(help="Port on which to serve the folder.")] = 8000,
+    open_in_browser: Annotated[bool, typer.Option(help="Open the link in the default webbrowser.")] = True,
+    silent: Annotated[bool, typer.Option(help="Stope the server from printing to the console.")] = True,
+):
     os.chdir(path)
     with open(os.devnull, "w") as f:
         if silent:
             sys.stdout = f
             sys.stderr = f
         server = http.server.HTTPServer((ip, port), CORSRequestHandler)
+
+        if open_in_browser:
+            webbrowser.open_new(f"{ip}:{port}")
+
         try:
             server.serve_forever()
         except KeyboardInterrupt:
