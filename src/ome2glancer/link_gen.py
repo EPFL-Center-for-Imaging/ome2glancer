@@ -121,7 +121,7 @@ def link_gen(
         if not path.exists():
             raise ValueError(f"{path} doesn't exist.")
         else:
-            server_process = multiprocessing.Process(target=ome2glancer.serve.serve, args=(path, ip, port))
+            server_process = multiprocessing.Process(target=ome2glancer.serve.serve, args=(path, ip, port, False, True))
             server_process.start()
             url = f"http://{ip}:{port}"
     elif validators.url(file):
@@ -194,6 +194,8 @@ def link_gen(
 
     link = instance + "/#!" + json.dumps(state.to_json(), separators=(",", ":"))
 
+    link = link.replace(" ", "%20")
+
     print(link)
 
     if open_in_browser:
@@ -208,3 +210,5 @@ def link_gen(
                 time.sleep(0.1)
         except KeyboardInterrupt:
             server_process.join()
+
+    return link
